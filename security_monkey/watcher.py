@@ -21,6 +21,79 @@ import time
 import datastore
 from sets import Set
 
+from functools import wraps
+
+
+def record_exception(location=None, exception=None, exception_map={}):
+    """
+    Logs any exceptions that happen in slurp and adds them to the exception_map
+    using their location as the key.  The location is a tuple in the form:
+    (technology, account, region, item_name) that describes the object where the exception occured.
+    Location can also exclude an item_name if the exception is region wide.
+    """
+    if location in exception_map:
+        app.logger.debug("Exception map already has location {}. This should not happen.".format(location))
+    exception_map[location] = exception
+    app.logger.debug("Adding {} to the exceptions list. Exception was: {}".format(location, str(exception)))
+
+
+def auto_record_exception(exception_type=Exception):
+    def slurp_exception(f):
+        @wraps(f)
+        def f_slurp_exception(*args, **kwargs):
+            location = kwargs.get['location']
+            exception_map = kwargs.get['exception_map']
+
+            try:
+                return f(*args, **kwargs)
+            except Exception as e:
+                record_exception(location=location, exception=exception_type(e), exception_map=exception_map)
+                raise e
+
+        return f_slurp_exception
+    return slurp_exception
+
+
+def boto_rate_limited(technology=None, max_attempts=5):
+    def _backoff(e, delay, attempts, max_attempts, technology):
+        if e.error_code == 'Throttling':
+            if delay == 0:
+                delay = 1
+                app.logger.warn(('Being rate-limited by AWS. Increasing delay on tech {} ' +
+                                 'from 0 to 1 second. Attempt {}')
+                                .format(technology, attempts))
+            elif attempts < max_attempts:
+                delay *= 2
+                app.logger.warn(('Still being rate-limited by AWS. Increasing delay on tech {} ' +
+                                 'to {} seconds. Attempt {}')
+                                .format(technology, delay, attempts))
+            else:
+                raise e
+        else:
+            raise e
+        return delay
+
+    def decorator_retry(f):
+
+        @wraps(f)
+        def f_retry(*args, **kwargs):
+            delay = 0
+            attempts = 0
+
+            while True:
+                attempts += 1
+                try:
+                    if delay > 0:
+                        time.sleep(delay)
+
+                    return f(*args, **kwargs)
+                except BotoServerError as e:
+                    delay = _backoff(e, delay, attempts, max_attempts, technology)
+
+        return f_retry
+
+    return decorator_retry
+
 
 class Watcher(object):
     """Slurps the current config from AWS and compares it to what has previously
@@ -35,7 +108,7 @@ class Watcher(object):
         """Initializes the Watcher"""
         self.datastore = datastore.Datastore()
         if not accounts:
-            accounts = Account.query.filter(Account.third_party==False).filter(Account.active==True).all()
+            accounts = Account.query.filter(Account.third_party == False).filter(Account.active == True).all()
             self.accounts = [account.name for account in accounts]
         else:
             self.accounts = accounts
@@ -51,7 +124,7 @@ class Watcher(object):
         """
         query = IgnoreListEntry.query
         query = query.join((Technology, Technology.id == IgnoreListEntry.tech_id))
-        self.ignore_list = query.filter(Technology.name==self.index).all()
+        self.ignore_list = query.filter(Technology.name == self.index).all()
 
     def check_ignore_list(self, name):
         """
@@ -59,46 +132,11 @@ class Watcher(object):
         """
         for result in self.ignore_list:
             if name.lower().startswith(result.prefix.lower()):
-                app.logger.warn("Ignoring {}/{} because of IGNORELIST prefix {}".format(self.index, name, result.prefix))
+                app.logger.warn(
+                    "Ignoring {}/{} because of IGNORELIST prefix {}".format(self.index, name, result.prefix))
                 return True
 
         return False
-
-    def wrap_aws_rate_limited_call(self, awsfunc, *args, **nargs):
-        attempts = 0
-
-        while True:
-            attempts = attempts + 1
-            try:
-                if self.rate_limit_delay > 0:
-                    time.sleep(self.rate_limit_delay)
-
-                retval = awsfunc(*args, **nargs)
-
-                if self.rate_limit_delay > 0:
-                    app.logger.warn(("Successfully Executed Rate-Limited Function. " +
-                                     "Tech: {} Account: {}. "
-                                     "Reducing sleep period from {} to {}")
-                                    .format(self.index, self.accounts, self.rate_limit_delay, self.rate_limit_delay / 2))
-                    self.rate_limit_delay = self.rate_limit_delay / 2
-
-                return retval
-            except BotoServerError as e:
-                if e.error_code == 'Throttling':
-                    if self.rate_limit_delay == 0:
-                        self.rate_limit_delay = 1
-                        app.logger.warn(('Being rate-limited by AWS. Increasing delay on tech {} ' +
-                                        'in account {} from 0 to 1 second. Attempt {}')
-                                        .format(self.index, self.accounts, attempts))
-                    elif self.rate_limit_delay < 16:
-                        self.rate_limit_delay = self.rate_limit_delay * 2
-                        app.logger.warn(('Still being rate-limited by AWS. Increasing delay on tech {} ' +
-                                        'in account {} to {} seconds. Attempt {}')
-                                        .format(self.index, self.accounts, self.rate_limit_delay, attempts))
-                    else:
-                        raise e
-                else:
-                    raise e
 
     def created(self):
         """
@@ -131,19 +169,7 @@ class Watcher(object):
         """
         raise NotImplementedError()
 
-    def slurp_exception(self, location=None, exception=None, exception_map={}):
-        """
-        Logs any exceptions that happen in slurp and adds them to the exception_map
-        using their location as the key.  The location is a tuple in the form:
-        (technology, account, region, item_name) that describes the object where the exception occured.
-        Location can also exclude an item_name if the exception is region wide.
-        """
-        if location in exception_map:
-            app.logger.debug("Exception map already has location {}. This should not happen.".format(location))
-        exception_map[location] = exception
-        app.logger.debug("Adding {} to the exceptions list. Exception was: {}".format(location, str(exception)))
-
-    def locationInExceptionMap(self, item_location, exception_map={}):
+    def location_in_exception_map(self, item_location, exception_map={}):
         """
         Determines whether a given location is covered by an exception already in the
         exception map.
@@ -158,22 +184,26 @@ class Watcher(object):
         """
         # Exact Match
         if item_location in exception_map:
-            app.logger.debug("Skipping {} due to an item-level exception {}.".format(item_location, exception_map[item_location]))
+            app.logger.debug(
+                "Skipping {} due to an item-level exception {}.".format(item_location, exception_map[item_location]))
             return True
 
         # (index, account, region)
         if item_location[0:3] in exception_map:
-            app.logger.debug("Skipping {} due to an region-level exception {}.".format(item_location, exception_map[item_location[0:3]]))
+            app.logger.debug("Skipping {} due to an region-level exception {}.".format(item_location, exception_map[
+                item_location[0:3]]))
             return True
 
         # (index, account)
         if item_location[0:2] in exception_map:
-            app.logger.debug("Skipping {} due to an account-level exception {}.".format(item_location, exception_map[item_location[0:2]]))
+            app.logger.debug("Skipping {} due to an account-level exception {}.".format(item_location, exception_map[
+                item_location[0:2]]))
             return True
 
         # (index)
         if item_location[0:1] in exception_map:
-            app.logger.debug("Skipping {} due to an technology-level exception {}.".format(item_location, exception_map[item_location[0:1]]))
+            app.logger.debug("Skipping {} due to an technology-level exception {}.".format(item_location, exception_map[
+                item_location[0:1]]))
             return True
 
         return False
@@ -187,7 +217,8 @@ class Watcher(object):
         curr_map = {item.location(): item for item in current}
 
         item_locations = list(Set(prev_map).difference(Set(curr_map)))
-        item_locations = [item_location for item_location in item_locations if not self.locationInExceptionMap(item_location, exception_map)]
+        item_locations = [item_location for item_location in item_locations if
+                          not self.location_in_exception_map(item_location, exception_map)]
         list_deleted_items = [prev_map[item] for item in item_locations]
 
         for item in list_deleted_items:
@@ -220,7 +251,8 @@ class Watcher(object):
         curr_map = {item.location(): item for item in current}
 
         item_locations = list(Set(curr_map).intersection(Set(prev_map)))
-        item_locations = [item_location for item_location in item_locations if not self.locationInExceptionMap(item_location, exception_map)]
+        item_locations = [item_location for item_location in item_locations if
+                          not self.location_in_exception_map(item_location, exception_map)]
 
         for location in item_locations:
             prev_item = prev_map[location]
@@ -228,7 +260,8 @@ class Watcher(object):
             if not sub_dict(prev_item.config) == sub_dict(curr_item.config):
                 change_item = ChangeItem.from_items(old_item=prev_item, new_item=curr_item)
                 self.changed_items.append(change_item)
-                app.logger.debug("%s %s/%s/%s changed" % (self.i_am_singular, change_item.account, change_item.region, change_item.name))
+                app.logger.debug("%s %s/%s/%s changed" % (
+                    self.i_am_singular, change_item.account, change_item.region, change_item.name))
 
     def find_changes(self, current=[], exception_map={}):
         """
@@ -317,7 +350,8 @@ class ChangeItem(object):
     Object tracks two different revisions of a given item.
     """
 
-    def __init__(self, index=None, region=None, account=None, name=None, old_config={}, new_config={}, active=False, audit_issues=None):
+    def __init__(self, index=None, region=None, account=None, name=None, old_config={}, new_config={}, active=False,
+                 audit_issues=None):
         self.index = index
         self.region = region
         self.account = account
@@ -374,7 +408,8 @@ class ChangeItem(object):
                 ret += "Issue: {}<br/>".format(issue.issue)
                 ret += "Notes: {}<br/>".format(issue.notes)
                 if issue.justified:
-                    ret += "Justification: {} on {} by {}<br/>".format(issue.justification, issue.justified_date, issue.user.name)
+                    ret += "Justification: {} on {} by {}<br/>".format(issue.justification, issue.justified_date,
+                                                                       issue.user.name)
                 ret += "<br/>"
 
         return ret
@@ -383,5 +418,7 @@ class ChangeItem(object):
         """
         Save the item
         """
-        app.logger.debug("Saving {}/{}/{}/{}\n\t{}".format(self.index, self.account, self.region, self.name, self.new_config))
-        datastore.store(self.index, self.region, self.account, self.name, self.active, self.new_config, new_issues=self.audit_issues)
+        app.logger.debug(
+            "Saving {}/{}/{}/{}\n\t{}".format(self.index, self.account, self.region, self.name, self.new_config))
+        datastore.store(self.index, self.region, self.account, self.name, self.active, self.new_config,
+                        new_issues=self.audit_issues)
