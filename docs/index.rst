@@ -11,8 +11,16 @@ Quick Start
 .. toctree::
   :maxdepth: 3
 
-  quickstart1
+  quickstart
 
+
+Changelog
+=========
+
+.. toctree::
+  :maxdepth: 3
+
+  changelog
 
 API Reference
 =============
@@ -32,5 +40,4 @@ About
 
 	authors
 	changelog
-	plans
 	contributing

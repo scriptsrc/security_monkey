@@ -1,12 +1,13 @@
 part of security_monkey;
 
-abstract class PaginatedTable {
-    Scope scope;
+abstract class PaginatedTable implements ScopeAware {
     bool is_error = false;
     bool is_loaded = false;
     String err_message = "";
 
-    PaginatedTable(this.scope) {
+    PaginatedTable() {}
+
+    void set scope(Scope scope) {
         scope.on("globalAlert").listen(this._showErrorMessage);
     }
 
@@ -69,4 +70,36 @@ abstract class PaginatedTable {
         }
     }
     /// PAGINATION END
+
+    /// COLUMN SORTING
+    String sorting_column = "none";
+    bool sort_asc = true;
+
+    void sort_column(var column) {
+        if (sorting_column == column) {
+            sort_asc = !sort_asc;
+        } else {
+            sorting_column = column;
+            sort_asc = true;
+        }
+        list();
+    }
+
+    String order_dir() {
+        if (sort_asc) return "Asc";
+        return "Desc";
+    }
+
+    String class_for_column(var column) {
+        if (sorting_column == column) {
+            if (sort_asc) {
+                return "glyphicon glyphicon-sort-by-alphabet";
+            } else {
+                return "glyphicon glyphicon-sort-by-alphabet-alt";
+            }
+        } else {
+            return "glyphicon glyphicon-sort";
+        }
+    }
+    /// COLUMN SORTING END
 }

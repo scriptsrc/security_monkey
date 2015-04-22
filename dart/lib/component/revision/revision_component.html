@@ -1,7 +1,7 @@
-<div class="panel panel-{{ cmp.panelClassForRevision() }}">
+<div class="panel panel-{{ panelClassForRevision() }}">
   <div class="panel-heading">
-    {{cmp.rev.date_created | date:'medium'}}
-    <span ng-switch="cmp.rev.active" class="pull-right">
+    {{rev.date_created | date:'medium'}}
+    <span ng-switch="rev.active" class="pull-right">
       <span ng-switch-when="true" class="glyphicon glyphicon-ok">Active</span>
       <span ng-switch-when="false" class="glyphicon glyphicon-remove">Deleted</span>
     </span>
@@ -9,25 +9,59 @@
   <div class="panel-body">
     <div class="col-md-3">
       <tabset vertical="true" type="'pills'">
-        <tab heading="Current" select="cmp.set_diff(false)"></tab>
-        <tab heading="Diff" select="cmp.set_diff(true)"></tab>
+        <tab heading="Current" select="select_tab('current')"></tab>
+        <tab disabled="!has_expanded_section()" heading="Expanded" select="select_tab('expanded')"></tab>
+        <tab disabled="!has_minimized_section()" heading="Minimized" select="select_tab('minimized')"></tab>
+        <tab heading="Diff" select="select_tab('diff')"></tab>
       </tabset>
     </div>
 
     <!-- Content -->
-    <div class="col-md-9" ng-switch="cmp.show_diff">
-      <div ng-switch-when="true" class="tab-pane" id="diff">
-        <span ng-if="cmp.hasDiffHtml()" ng-bind-html="cmp.rev.diff_html"></span>
-        <span ng-if="!cmp.hasDiffHtml()">Diff Not Available.</span>
+    <div class="col-md-9" ng-switch="display_tab">
+      <div ng-switch-when="diff" class="tab-pane" id="diff">
+        <span ng-if="hasDiffHtml()" ng-bind-html="rev.diff_html"></span>
+        <span ng-if="!hasDiffHtml()">Diff Not Available.</span>
       </div>
-      <div ng-switch-when="false" class="tab-pane active" id="current">
-        <pre><code class="json">{{cmp.rev.config}}</code></pre>
+      <div ng-switch-when="current" class="tab-pane active" id="current">
+        <pre><code class="json">{{rev.config}}</code></pre>
+      </div>
+      <div ng-switch-when="expanded" class="tab-pane active" id="expanded">
+        <pre><code class="json">{{rev.expanded}}</code></pre>
+      </div>
+      <div ng-switch-when="minimized" class="tab-pane active" id="minimized">
+        <div class="form-group">
+          <label for="minchars" class="col-sm-4 control-label">
+            <b>Minimum # of Characters:</b>
+          </label>
+          <div class="col-sm-4">
+            <select ng-model="minchars" class="form-control" id="minchars">
+              <option>0</option>
+              <option>1</option>
+              <option>2</option>
+              <option>3</option>
+              <option>4</option>
+              <option>5</option>
+              <option>6</option>
+              <option>7</option>
+              <option>8</option>
+              <option>9</option>
+              <option>10</option>
+              <option>11</option>
+              <option>12</option>
+              <option>13</option>
+              <option>14</option>
+              <option>15</option>
+            </select>
+          </div>
+          <br/><br/>
+          <pre><code class="json">{{minimized_policy}}</code></pre>
+        </div>
       </div>
     </div>
   </div>
 
-  <table class="table" ng-if="cmp.rev.comments.isNotEmpty">
-    <tr ng-repeat="comment in cmp.rev.comments">
+  <table class="table" ng-if="rev.comments.isNotEmpty">
+    <tr ng-repeat="comment in rev.comments">
       <td>
         <ul class="list-unstyled">
           <li class="text-muted">{{ comment.user }}</li>
@@ -37,8 +71,8 @@
       <td>{{ comment.text }}</td>
       <td>
         <button
-          ng-if="comment.user==cmp.user"
-          ng-click="cmp.removeComment(comment.id)"
+          ng-if="comment.user==user"
+          ng-click="removeComment(comment.id)"
           class="btn btn-xs btn-danger pull-right">
             <i class="glyphicon glyphicon-remove"></i>
         </button>
@@ -49,11 +83,11 @@
 
   <div class="panel-footer">
     <div class="input-group">
-      <input ng-model="cmp.addingComment" type="text" maxlength="1024" class="form-control">
+      <input ng-model="addingComment" type="text" maxlength="1024" class="form-control">
       <span class="input-group-btn">
         <button class="btn btn-default btn-primary"
                  type="button"
-                 ng-click="cmp.addComment()">Add Comment</button>
+                 ng-click="addComment()">Add Comment</button>
       </span>
     </div><!-- /input-group -->
   </div>

@@ -12,16 +12,22 @@
 #     See the License for the specific language governing permissions and
 #     limitations under the License.
 """
-.. module: security_monkey.auditors.iam_ssl
+.. module: security_monkey.auditors.iam.iam_ssl
     :platform: Unix
 
 .. version:: $$VERSION$$
 .. moduleauthor::  Patrick Kelley <pkelley@netflix.com> @monkeysecurity
 
 """
-from security_monkey.watchers.iam_ssl import IAMSSL
+from dateutil.tz import tzutc
+from dateutil import parser
+
+from security_monkey.watchers.iam.iam_ssl import IAMSSL
 from security_monkey.auditor import Auditor
 
+
+# April 1, 2014
+HEARTBLEED_DATE = '2014-04-01T00:00:00Z'
 
 class IAMSSLAuditor(Auditor):
     index = IAMSSL.index
@@ -68,3 +74,40 @@ class IAMSSLAuditor(Auditor):
         if sig_alg and 'sha1' in sig_alg.lower():
             self.add_issue(1, 'Cert uses an SHA1 signature Algorithm', cert_item, notes=sig_alg)
 
+    def check_upcoming_expiration(self, cert_item):
+        """
+        alert when a cert's expiration is within 30 days
+        """
+        expiration = cert_item.config.get('expiration', None)
+        if expiration:
+            expiration = parser.parse(expiration)
+            now = expiration.now(tzutc())
+            time_to_expiration = (expiration - now).days
+            if 0 <= time_to_expiration <= 30:
+                notes = 'Expires on {0}.'.format(str(expiration))
+                self.add_issue(10, 'Cert will expire soon.', cert_item, notes=notes)
+
+    def check_expired(self, cert_item):
+        """
+        alert when a cert's expiration is within 30 days
+        """
+        expiration = cert_item.config.get('expiration', None)
+        if expiration:
+            expiration = parser.parse(expiration)
+            now = expiration.now(tzutc())
+            time_to_expiration = (expiration - now).days
+            if time_to_expiration < 0:
+                notes = 'Expired on {0}.'.format(str(expiration))
+                self.add_issue(10, 'Cert has expired.', cert_item, notes=notes)
+
+    def check_upload_date_for_heartbleed(self, cert_item):
+        """
+        alert when a cert was uploaded pre-heartbleed.
+        """
+        upload = cert_item.config.get('upload_date', None)
+        if upload:
+            upload = parser.parse(upload)
+            heartbleed = parser.parse(HEARTBLEED_DATE)
+            if upload < heartbleed:
+                notes = "Cert was uploaded {0} days before heartbleed.".format((heartbleed-upload).days)
+                self.add_issue(10, 'Cert may have been compromised by heartbleed.', cert_item, notes=notes)

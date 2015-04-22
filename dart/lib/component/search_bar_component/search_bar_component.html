@@ -5,42 +5,42 @@
       <h6>Region</h6>
       <input type="hidden" id="filterregions"></input>
       <input type="hidden"
-        class="bigdrop select2-offscreen populate placeholder"
-        multiple="multiple" id="s2_regions" style="width: 100%">
+        class="bigdrop select2-offscreen populate placeholder full_width"
+        multiple="multiple" id="s2_regions">
     </div>
     <div>
       <h6>Tech</h6>
       <input type="hidden" id="filtertechnologies"></input>
       <input type="hidden"
-        class="bigdrop select2-offscreen populate placeholder"
-        multiple="multiple" id="s2_technologies" style="width: 100%">
+        class="bigdrop select2-offscreen populate placeholder full_width"
+        multiple="multiple" id="s2_technologies">
     </div>
     <div>
       <h6>Account</h6>
       <input type="hidden" id="filteraccounts"></input>
       <input type="hidden"
-        class="bigdrop select2-offscreen populate placeholder"
-        multiple="multiple" id="s2_accounts" style="width: 100%">
+        class="bigdrop select2-offscreen populate placeholder full_width"
+        multiple="multiple" id="s2_accounts">
         <!-- Foundation -->
     </div>
     <div>
       <h6>Name</h6>
       <input type="hidden" id="filternames"></input>
       <input type="hidden"
-        class="bigdrop select2-offscreen populate placeholder"
-        multiple="multiple" id="s2_names" style="width: 100%">
+        class="bigdrop select2-offscreen populate placeholder full_width"
+        multiple="multiple" id="s2_names">
     </div>
 
     <hr>
 
     <div>
       <h6>Search Config</h6>
-      <input id="searchconfig" class="form-control" ng-model="cmp.searchconfig"></input>
+      <input id="searchconfig" class="form-control" ng-model="searchconfig"></input>
     </div>
 
     <div>
       <h6>Status</h6>
-      <select ng-model="cmp.active_filter_value" class="form-control">
+      <select ng-model="active_filter_value" class="form-control">
         <option value="null">None (Return Both)</option>
         <option value="True">Active</option>
         <option value="False">Inactive (Deleted)</option>
@@ -49,7 +49,7 @@
 
     <div>
       <h6>Type</h6>
-      <select ng-model="cmp.result_type_binded" class="form-control">
+      <select ng-model="result_type_binded" class="form-control">
         <option value="items">Items</option>
         <option value="revisions">Items + Historical Changes</option>
         <option value="issues">Audit Issues</option>
@@ -61,7 +61,7 @@
       <div class="row">
         <div class="col-md-4">
         <button class="btn btn-sm btn-primary"
-          ng-click="cmp.pushFilterRoutes()">Search</button>
+          ng-click="pushFilterRoutes()">Search</button>
         </div>
         <div class="col-md-8">
         </div>

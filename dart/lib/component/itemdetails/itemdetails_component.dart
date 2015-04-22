@@ -3,31 +3,27 @@ part of security_monkey;
 @Component(
         selector: 'itemdetails',
         templateUrl: 'packages/security_monkey/component/itemdetails/itemdetails.html',
-        cssUrl: const ['css/bootstrap.min.css'],
-        publishAs: 'cmp'
-        //useShadowDom: true
+        //cssUrl: const ['/css/bootstrap.min.css']
+        useShadowDom: false
 )
-class ItemDetailsComponent extends ShadowRootAware {
+class ItemDetailsComponent implements ScopeAware { // extends ShadowRootAware
     JustificationService js;
     UsernameService us;
 
     RouteProvider routeProvider;
-    ShadowRoot shadowRoot;
+    //ShadowRoot shadowRoot;
 
     Item item;
     String rev_id = null;
     List<Revision> displayed_revisions;
 
     ObjectStore store;
-    Scope scope;
 
     bool is_loading = true;
     bool is_error = false;
     String err_message;
 
-    ItemDetailsComponent(this.routeProvider, this.js, this.us, this.store, this.scope) {
-        scope.on("globalAlert").listen(this._showMessage);
-
+    ItemDetailsComponent(this.routeProvider, this.js, this.us, this.store) {
         var item_id = this.routeProvider.parameters['itemid'];
         this.rev_id = this.routeProvider.parameters['revid'];
         displayed_revisions = new List<Revision>();
@@ -55,6 +51,10 @@ class ItemDetailsComponent extends ShadowRootAware {
         });
     }
 
+    void set scope(Scope scope) {
+        scope.on("globalAlert").listen(this._showMessage);
+    }
+
     void _showMessage(ScopeEvent event) {
         is_loading = false;
         this.is_error = true;
@@ -63,11 +63,13 @@ class ItemDetailsComponent extends ShadowRootAware {
 
     int _rev_index = 0;
     void loadMore() {
+      if (item != null) {
         List revisions = item.revisions;
         //print("Inside loadMore. $_rev_index of ${revisions.length}");
         if (_rev_index < revisions.length) {
             displayed_revisions.add(revisions.elementAt(_rev_index++));
         }
+      }
     }
 
     get user => us.name;
@@ -147,9 +149,10 @@ class ItemDetailsComponent extends ShadowRootAware {
 
     void _scrollTo(int revid) {
         print("Asked to scroll to revision $revid");
-        var item = shadowRoot.querySelector("#rev_id_$revid");
+        var item = querySelector("#rev_id_$revid");
         item.scrollIntoView(ScrollAlignment.TOP);
                 //ScrollAlignment.CENTER);
+                // shadowRoot.querySelector
     }
 
     void scrollTo(int revid) {
@@ -164,9 +167,9 @@ class ItemDetailsComponent extends ShadowRootAware {
         }
     }
 
-    void onShadowRoot(ShadowRoot shadowRoot) {
-        this.shadowRoot = shadowRoot;
-    }
+//    void onShadowRoot(ShadowRoot shadowRoot) {
+//        this.shadowRoot = shadowRoot;
+//    }
 
     String justification = "";
     void justify() {

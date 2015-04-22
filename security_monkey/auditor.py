@@ -26,9 +26,10 @@ import datastore
 from security_monkey import app, db
 from security_monkey.watcher import ChangeItem
 from security_monkey.common.jinja import get_jinja_env
-from security_monkey.datastore import User
+from security_monkey.datastore import User, AuditorSettings, Item, ItemAudit, Technology
 from security_monkey.common.utils.utils import send_email
 
+from sqlalchemy import and_
 
 class Auditor(object):
     """
@@ -48,23 +49,22 @@ class Auditor(object):
         self.team_emails = app.config.get('SECURITY_TEAM_EMAIL')
         self.emails = []
         self.emails.extend(self.team_emails)
+
         for account in self.accounts:
-            users = User.query.filter(User.daily_audit_email==True).filter(User.accounts.any(name=accounts[0])).all()
-            new_emails = [user.email for user in users]
-            self.emails.extend(new_emails)
+            users = User.query.filter(User.daily_audit_email==True).filter(User.accounts.any(name=account)).all()
+
+        self.emails.extend([user.email for user in users])
 
     def add_issue(self, score, issue, item, notes=None):
         """
         Adds a new issue to an item, if not already reported.
         :return: The new issue
         """
-        if not hasattr(item, 'new_audit_issues'):
-            item.new_audit_issues = []
 
         if notes and len(notes) > 512:
             notes = notes[0:512]
 
-        for existing_issue in item.new_audit_issues:
+        for existing_issue in item.audit_issues:
             if existing_issue.issue == issue:
                 if existing_issue.notes == notes:
                     if existing_issue.score == score:
@@ -83,7 +83,7 @@ class Auditor(object):
                                         justified_date=None,
                                         justification=None)
 
-        item.new_audit_issues.append(new_issue)
+        item.audit_issues.append(new_issue)
         return new_issue
 
     def prep_for_audit(self):
@@ -130,7 +130,7 @@ class Auditor(object):
                                       name=item.name,
                                       new_config=item_revision.config)
                 new_item.audit_issues.extend(item.issues)
-                new_item.new_audit_issues = []
+                new_item.audit_issues = []
                 new_item.db_item = item
                 prev_list.append(new_item)
         return prev_list
@@ -144,21 +144,24 @@ class Auditor(object):
             if not hasattr(item, 'db_item'):
                 item.db_item = self.datastore._get_item(item.index, item.region, item.account, item.name)
 
-            if not hasattr(item, 'new_audit_issues'):
-                item.new_audit_issues = []
-
-            existing_issues = item.audit_issues
-            new_issues = item.new_audit_issues
+            existing_issues = item.db_item.issues
+            new_issues = item.audit_issues
 
             # Add new issues
             for new_issue in new_issues:
                 nk = "{} -- {}".format(new_issue.issue, new_issue.notes)
                 if nk not in ["{} -- {}".format(old_issue.issue, old_issue.notes) for old_issue in existing_issues]:
                     app.logger.debug("Saving NEW issue {}".format(nk))
+                    item.found_new_issue = True
+                    item.confirmed_new_issues.append(new_issue)
                     item.db_item.issues.append(new_issue)
                     db.session.add(item.db_item)
                     db.session.add(new_issue)
                 else:
+                    for issue in existing_issues:
+                        if issue.issue == new_issue.issue and issue.notes == new_issue.notes:
+                            item.confirmed_existing_issues.append(issue)
+                            break
                     key = "{}/{}/{}/{}".format(item.index, item.region, item.account, item.name)
                     app.logger.debug("Issue was previously found. Not overwriting.\n\t{}\n\t{}".format(key, nk))
 
@@ -167,9 +170,11 @@ class Auditor(object):
                 ok = "{} -- {}".format(old_issue.issue, old_issue.notes)
                 if ok not in ["{} -- {}".format(new_issue.issue, new_issue.notes) for new_issue in new_issues]:
                     app.logger.debug("Deleting FIXED issue {}".format(ok))
+                    item.confirmed_fixed_issues.append(old_issue)
                     db.session.delete(old_issue)
 
         db.session.commit()
+        self._create_auditor_settings()
 
     def email_report(self, report):
         """
@@ -207,3 +212,56 @@ class Auditor(object):
             return template.render({'items': report_list})
         else:
             return False
+
+    def _create_auditor_settings(self):
+        """
+        Checks to see if an AuditorSettings entry exists for each issue.
+        If it does not, one will be created with disabled set to false.
+        """
+        app.logger.debug("Creating/Assigning Auditor Settings in account {} and tech {}".format(self.accounts, self.index))
+
+        query = ItemAudit.query
+        query = query.join((Item, Item.id == ItemAudit.item_id))
+        query = query.join((Technology, Technology.id == Item.tech_id))
+        query = query.filter(Technology.name == self.index)
+        issues = query.filter(ItemAudit.auditor_setting_id == None).all()
+
+        for issue in issues:
+            self._set_auditor_setting_for_issue(issue)
+
+        db.session.commit()
+        app.logger.debug("Done Creating/Assigning Auditor Settings in account {} and tech {}".format(self.accounts, self.index))
+
+    def _set_auditor_setting_for_issue(self, issue):
+
+        auditor_setting = AuditorSettings.query.filter(
+            and_(
+                AuditorSettings.tech_id == issue.item.tech_id,
+                AuditorSettings.account_id == issue.item.account_id,
+                AuditorSettings.issue_text == issue.issue
+            )
+        ).first()
+
+        if auditor_setting:
+            auditor_setting.issues.append(issue)
+            db.session.add(auditor_setting)
+            return auditor_setting
+
+        auditor_setting = AuditorSettings(
+            tech_id=issue.item.tech_id,
+            account_id=issue.item.account_id,
+            disabled=False,
+            issue_text=issue.issue
+        )
+
+        auditor_setting.issues.append(issue)
+        db.session.add(auditor_setting)
+        db.session.commit()
+        db.session.refresh(auditor_setting)
+
+        app.logger.debug("Created AuditorSetting: {} - {} - {}".format(
+            issue.issue,
+            self.index,
+            issue.item.account.name))
+
+        return auditor_setting
