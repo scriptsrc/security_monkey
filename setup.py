@@ -37,7 +37,7 @@ setup(
             'Jinja2==2.7.2',
             'MarkupSafe==0.18',
             'Paste==1.7.5.1',
-            'SQLAlchemy==0.9.2',
+            'SQLAlchemy==1.3.0',
             'Werkzeug==0.9.4',
             'aniso8601==0.82',
             'arrow==0.4.2',
