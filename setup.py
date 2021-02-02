@@ -34,7 +34,7 @@ setup(
             'Flask-Script==0.6.3',
             'Flask-Security==1.7.4',
             'Flask-WTF==0.9.5',
-            'Jinja2==2.7.2',
+            'Jinja2==2.10.1',
             'MarkupSafe==0.18',
             'Paste==1.7.5.1',
             'SQLAlchemy==0.9.2',
