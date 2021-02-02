@@ -53,7 +53,7 @@ setup(
             'psycopg2==2.5.2',
             'python-dateutil==2.2',
             'python-memcached==1.53',
-            'requests==2.2.1',
+            'requests==2.20.0',
             'py-bcrypt==0.4',
             'Sphinx==1.2.2',
             'gunicorn==18.0',
