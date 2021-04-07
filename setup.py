@@ -42,7 +42,7 @@ setup(
             'aniso8601==0.82',
             'arrow==0.4.2',
             'boto==2.36.0',
-            'bottle==0.12.3',
+            'bottle==0.12.19',
             'dnspython==1.11.1',
             'ipaddr==2.1.11',
             'ipython==1.2.0',
